@@ -1,46 +1,74 @@
-name: Docker CI/CD Pipeline
+name: Docker Build and Deploy
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
-env:
-  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/my-portfolio
-  
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-    # Step 1: Checkout code
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    # Step 2: Set up Docker Buildx (advanced Docker building)
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    
-    # Step 3: Login to Docker Hub
-    - name: Login to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    
-    # Step 4: Build and push Docker image
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ env.DOCKER_IMAGE }}:latest
-          ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-        cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:latest
-        cache-to: type=inline
-    
-    # Step 5: Image digest
-    - name: Image digest
-      run: echo "Image pushed successfully! 🎉"
+      # 1. Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Log in to Docker Hub using GitHub secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/my-portfolio:latest .
+
+      # 4. Push Docker image to Docker Hub
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/my-portfolio:latest
+
+      # 5. Configure AWS credentials using GitHub secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1 # change if your region is different
+
+      # 6. Deploy Docker image to ECS
+      - name: Deploy to AWS ECS
+        run: |
+          CLUSTER_NAME=my-portfolio-cluster
+          SERVICE_NAME=my-portfolio-service
+          TASK_DEF_NAME=my-portfolio-task
+          IMAGE_URI=${{ secrets.DOCKERHUB_USERNAME }}/my-portfolio:latest
+
+          # Create ECS task definition JSON dynamically
+          echo '{
+            "family": "'$TASK_DEF_NAME'",
+            "containerDefinitions": [
+              {
+                "name": "my-portfolio",
+                "image": "'$IMAGE_URI'",
+                "essential": true,
+                "portMappings": [
+                  { "containerPort": 80, "hostPort": 80 }
+                ]
+              }
+            ],
+            "requiresCompatibilities": ["FARGATE"],
+            "networkMode": "awsvpc",
+            "cpu": "256",
+            "memory": "512"
+          }' > ecs-task.json
+
+          # Register new task definition
+          aws ecs register-task-definition --cli-input-json file://ecs-task.json
+
+          # Update ECS service to use new task definition
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
