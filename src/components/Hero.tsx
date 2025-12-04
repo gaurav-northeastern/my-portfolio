@@ -78,7 +78,7 @@ export function Hero() {
                 className="group relative overflow-hidden px-8 py-6"
                 asChild
               >
-                <a href="/src/components/img/Gaurav_2.0.pdf" download="Gaurav_Sharma_Resume.pdf">
+                <a href="/assets/Gaurav_2.0.pdf" download="Gaurav_Sharma_Resume.pdf">
                   <span className="relative z-10 flex items-center gap-2">
                     <Download className="h-5 w-5" />
                     Download Resume
@@ -174,7 +174,7 @@ export function Hero() {
               <div className="relative z-10 group">
                 <div className="relative w-80 h-80 lg:w-96 lg:h-96 rounded-full overflow-hidden bg-gradient-to-br from-primary/10 to-secondary/10 backdrop-blur-sm border-4 border-background/50 shadow-2xl">
                   <ImageWithFallback
-                    src="/src/components/img/1682322839056.jpeg"
+                    src="/assets/images/profile.jpeg"
                     alt="Gaurav Sharma - Senior Software Engineer"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />

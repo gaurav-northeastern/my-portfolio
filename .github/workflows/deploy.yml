@@ -1,9 +1,13 @@
-name: Deploy to AWS S3 and CloudFront
+name: Build Docker Image and Deploy to AWS
 
 on:
   push:
     branches:
       - main  # Trigger on push to main branch
+
+env:
+  AWS_REGION: us-east-1  # Change to your preferred region
+  ECR_REPOSITORY: portfolio-website  # Change to your ECR repository name
 
 jobs:
   build-and-deploy:
@@ -14,32 +18,52 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Set up Node.js
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      # Step 3: Install dependencies
-      - name: Install dependencies
-        run: npm ci
-
-      # Step 4: Build the project
-      - name: Build project
-        run: npm run build
-
-      # Step 5: Configure AWS credentials
+      # Step 2: Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1  # Change to your preferred region
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Step 6: Deploy to S3
-      - name: Deploy to S3
+      # Step 3: Login to Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 4: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 5: Build and push Docker image to ECR
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --push \
+            .
+
+      # Step 6: Extract static files from Docker image and deploy to S3
+      - name: Extract build and deploy to S3
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Create a container from the image
+          docker create --name temp-container $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Copy the dist files from the container
+          docker cp temp-container:/usr/share/nginx/html ./dist
+
+          # Remove the temporary container
+          docker rm temp-container
+
+          # Deploy to S3
           aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
 
       # Step 7: Invalidate CloudFront cache
