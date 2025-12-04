@@ -3,9 +3,10 @@ node_modules
 npm-debug.log
 yarn.lock
 
-# Build output
+# Build output (generated during build, exclude old builds)
 dist
 build
+*.log
 
 # Git
 .git
