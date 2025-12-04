@@ -3,14 +3,17 @@
 # Stage 1: Build the application
 FROM node:20-alpine AS builder
 
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with verbose logging
+RUN npm ci --loglevel=verbose
 
 # Copy source code
 COPY . .
