@@ -3,79 +3,47 @@ name: Build and Push to Docker Hub
 on:
   push:
     branches:
-      - main  # Trigger on push to main branch
+      - main
   pull_request:
     branches:
-      - main  # Also run on PRs to main for testing
+      - main
 
 env:
-  DOCKER_IMAGE: gauravsharmax/my-portfolio  # Docker Hub repository
-  DOCKER_PLATFORMS: linux/amd64,linux/arm64  # Multi-platform build
+  DOCKER_IMAGE: gauravsharmax/my-portfolio
+  DOCKER_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      # ==========================================
-      # Step 1: Checkout the repository code
-      # ==========================================
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ==========================================
-      # Step 2: Set up QEMU for multi-platform builds
-      # Required for building ARM64 images on AMD64 runners
-      # ==========================================
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # ==========================================
-      # Step 3: Set up Docker Buildx
-      # Advanced Docker builder with caching support
-      # ==========================================
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: image=moby/buildkit:latest
 
-      # ==========================================
-      # Step 4: Login to Docker Hub
-      # Uses secrets for authentication
-      # Required secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
-      # ==========================================
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ==========================================
-      # Step 5: Extract metadata (tags, labels)
-      # Automatically generates tags based on git ref
-      # ==========================================
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            # Tag with 'latest' for main branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # Tag with commit SHA (short)
             type=sha,prefix={{branch}}-,format=short
-            # Tag with full commit SHA
             type=sha,prefix={{branch}}-,format=long
-            # Tag with branch name
             type=ref,event=branch
-            # Tag with PR number
             type=ref,event=pr
 
-      # ==========================================
-      # Step 6: Build and push Docker image
-      # Uses layer caching for faster builds
-      # Pushes only on main branch (not on PRs)
-      # ==========================================
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
@@ -83,19 +51,12 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: ${{ env.DOCKER_PLATFORMS }}
-          push: ${{ github.event_name != 'pull_request' }}  # Only push on main, not PRs
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
-          build-args: |
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-            VCS_REF=${{ github.sha }}
 
-      # ==========================================
-      # Step 7: Image digest output
-      # Shows the image digest for verification
-      # ==========================================
       - name: Image digest
         run: |
           echo "Image pushed successfully!"
@@ -103,20 +64,12 @@ jobs:
           echo "Tags: ${{ steps.meta.outputs.tags }}"
           echo "Digest: ${{ steps.build.outputs.digest }}"
 
-      # ==========================================
-      # Step 8: Test the Docker image (optional)
-      # Pulls and runs a quick health check
-      # ==========================================
       - name: Test Docker image
         if: github.event_name != 'pull_request'
         run: |
           docker pull ${{ env.DOCKER_IMAGE }}:latest
           docker run --rm -d -p 8080:80 --name test-container ${{ env.DOCKER_IMAGE }}:latest
           sleep 10
-
-          # Health check
           curl -f http://localhost:8080 || exit 1
-
-          # Cleanup
           docker stop test-container
-          echo " Docker image health check passed!"
+          echo "Docker image health check passed!"
